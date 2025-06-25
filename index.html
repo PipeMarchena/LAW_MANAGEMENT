@@ -63,6 +63,37 @@
             cursor: pointer;
             margin-top: 10px;
         }
+        /* Estilo para el modal de fecha de finalización */
+        .date-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        .date-modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        .date-modal-content input[type="date"] {
+            margin: 1rem 0;
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 0.25rem;
+            width: 100%;
+            max-width: 200px;
+        }
+        .date-modal-content button {
+            margin: 0.5rem;
+        }
     </style>
     <!-- Chart.js CDN para gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -72,6 +103,16 @@
     <div id="messageBox" class="message-box">
         <p id="messageText"></p>
         <button onclick="hideMessageBox()">OK</button>
+    </div>
+
+    <!-- Modal para seleccionar la fecha de finalización -->
+    <div id="completionDateModal" class="date-modal hidden">
+        <div class="date-modal-content">
+            <h3 class="text-xl font-semibold royal-blue-text mb-4">Seleccionar Fecha de Finalización</h3>
+            <input type="date" id="modalCompletionDateInput">
+            <button id="confirmCompletionDate" class="royal-blue-bg text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-300">Confirmar</button>
+            <button id="cancelCompletionDate" class="bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 transition duration-300">Cancelar</button>
+        </div>
     </div>
 
     <!-- Encabezado de la aplicación -->
@@ -119,10 +160,6 @@
                         <input type="date" id="seroConsultationDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" required>
                     </div>
                     <div>
-                        <label for="seroResponseDate" class="block text-sm font-medium text-gray-700">Fecha de Respuesta:</label>
-                        <input type="date" id="seroResponseDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" required>
-                    </div>
-                    <div>
                         <label for="seroPerson" class="block text-sm font-medium text-gray-700">Persona:</label>
                         <select id="seroPerson" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2">
                             <option value="N/A">N/A</option>
@@ -146,10 +183,6 @@
                     <div>
                         <label for="bestfinderConsultationDate" class="block text-sm font-medium text-gray-700">Fecha de Consulta:</label>
                         <input type="date" id="bestfinderConsultationDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" required>
-                    </div>
-                    <div>
-                        <label for="bestfinderResponseDate" class="block text-sm font-medium text-gray-700">Fecha de Respuesta:</label>
-                        <input type="date" id="bestfinderResponseDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" required>
                     </div>
                     <div>
                         <label for="bestfinderPerson" class="block text-sm font-medium text-gray-700">Persona:</label>
@@ -191,7 +224,7 @@
         // Importar funciones de Firebase SDK
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // CONFIGURACIÓN DE FIREBASE DIRECTAMENTE INCLUIDA
         const firebaseConfig = {
@@ -220,6 +253,10 @@
         let casesCompletedChart;
         let consultationsByPersonChart;
 
+        // Variable para almacenar temporalmente el ID de la actividad que se está marcando como completada
+        let currentActivityBeingCompletedId = null;
+        let currentActivityConsultationDate = null;
+
         /**
          * Muestra una caja de mensaje personalizada en lugar de alert().
          * @param {string} message - El mensaje a mostrar.
@@ -235,6 +272,74 @@
         function hideMessageBox() {
             document.getElementById('messageBox').style.display = 'none';
         }
+
+        /**
+         * Muestra el modal para seleccionar la fecha de finalización.
+         * @param {string} activityId - ID de la actividad que se completará.
+         * @param {string} consultationDate - Fecha de consulta de la actividad.
+         */
+        function showCompletionDateModal(activityId, consultationDate) {
+            currentActivityBeingCompletedId = activityId;
+            currentActivityConsultationDate = consultationDate;
+            const modal = document.getElementById('completionDateModal');
+            const dateInput = document.getElementById('modalCompletionDateInput');
+            
+            // Establece la fecha mínima para el picker como la fecha de consulta
+            dateInput.min = consultationDate;
+            dateInput.value = new Date().toISOString().split('T')[0]; // Fecha actual por defecto
+
+            modal.classList.remove('hidden');
+        }
+
+        /**
+         * Oculta el modal de fecha de finalización.
+         */
+        function hideCompletionDateModal() {
+            const modal = document.getElementById('completionDateModal');
+            modal.classList.add('hidden');
+            currentActivityBeingCompletedId = null;
+            currentActivityConsultationDate = null;
+            // Desmarcar el checkbox si el usuario cancela la acción
+            // No podemos usar event.target.id === 'cancelCompletionDate' aquí directamente
+            // ya que esta función se llama desde múltiples lugares.
+            // La lógica de desmarcar el checkbox en caso de cancelación debe estar en el listener del botón "Cancelar"
+        }
+
+        // Listener para el botón de confirmar en el modal de fecha de finalización
+        document.getElementById('confirmCompletionDate').addEventListener('click', async () => {
+            const completionDate = document.getElementById('modalCompletionDateInput').value;
+            if (!completionDate) {
+                showMessageBox("Por favor, selecciona una fecha de finalización.");
+                return;
+            }
+
+            // Validar que la fecha de finalización no sea anterior a la fecha de consulta
+            if (new Date(completionDate) < new Date(currentActivityConsultationDate)) {
+                showMessageBox("La fecha de finalización no puede ser anterior a la fecha de consulta.");
+                // Desmarcar el checkbox si la validación falla
+                const checkbox = document.getElementById(`completed-${currentActivityBeingCompletedId}`);
+                if (checkbox) {
+                    checkbox.checked = false;
+                }
+                return;
+            }
+
+            if (currentActivityBeingCompletedId) {
+                await updateActivityCompletionStatus(currentActivityBeingCompletedId, true, completionDate);
+            }
+            hideCompletionDateModal();
+        });
+
+        // Listener para el botón de cancelar en el modal de fecha de finalización
+        document.getElementById('cancelCompletionDate').addEventListener('click', () => {
+            // Desmarcar el checkbox si el usuario cancela
+            const checkbox = document.getElementById(`completed-${currentActivityBeingCompletedId}`);
+            if (checkbox) {
+                checkbox.checked = false;
+            }
+            hideCompletionDateModal();
+        });
+
 
         /**
          * Inicializa Firebase y configura el oyente de autenticación.
@@ -279,8 +384,13 @@
                             showMessageBox("Error de autenticación: El inicio de sesión anónimo no está habilitado en tu proyecto de Firebase. Por favor, habilítalo en la consola de Firebase (Autenticación > Métodos de inicio de sesión). Las funcionalidades de la base de datos no estarán disponibles hasta que lo hagas.");
                             document.getElementById('userIdDisplay').innerText = `ID de Usuario: AUTENTICACIÓN FALLIDA - Habilita Anónimo`;
                         } else if (error.code === 'auth/configuration-not-found') {
-                            showMessageBox("Error de autenticación: La configuración de Firebase Auth no se encontró o no es válida. Asegúrate de que el dominio de autenticación ('" + firebaseConfig.authDomain + "') esté añadido como un dominio autorizado en la consola de Firebase (Autenticación > Ajustes > Dominios autorizados).");
-                            document.getElementById('userIdDisplay').innerText = `ID de Usuario: AUTENTICACIÓN FALLIDA - Verifica Auth Domain`;
+                            showMessageBox(
+                                "Error de autenticación: La configuración de Firebase Auth no se encontró o no es válida. " +
+                                "Asegúrate de que: " +
+                                "1. El dominio de autenticación ('" + firebaseConfig.authDomain + "') esté añadido como un dominio autorizado en la consola de Firebase (Autenticación > Ajustes > Dominios autorizados). " +
+                                "2. El método de inicio de sesión Anónimo esté habilitado en la consola de Firebase (Autenticación > Métodos de inicio de sesión)."
+                            );
+                            document.getElementById('userIdDisplay').innerText = `ID de Usuario: AUTENTICACIÓN FALLIDA - Verifica Auth Config`;
                         }
                          else {
                             showMessageBox(`Error al iniciar sesión anónimamente: ${error.message}. Las funcionalidades de la base de datos no estarán disponibles.`);
@@ -304,9 +414,6 @@
                     } else {
                         // Este caso es principalmente para cuando ningún método de inicio de sesión tiene éxito
                         console.log("onAuthStateChanged: Usuario no autenticado.");
-                        // El mensaje ya se mostró si la autenticación anónima falló
-                        // Si llegó aquí y user es null, pero isAuthReady es true, significa que se había autenticado antes y la sesión expiró.
-                        // Mantendremos los formularios deshabilitados si user es null.
                         if (!isAuthReady) { // Si ya falló la inicialización inicial, no sobrescribir el mensaje
                             document.getElementById('userIdDisplay').innerText = `ID de Usuario: No disponible (sin autenticar)`;
                         }
@@ -319,8 +426,6 @@
                         enableForms();
                     } else {
                         console.error("onAuthStateChanged: Firebase no inicializado completamente, db es nulo, o no hay usuario autenticado. Los formularios permanecen deshabilitados.");
-                        // El mensaje de error ya se manejó arriba para 'auth/operation-not-allowed'
-                        // Si no se mostró un mensaje específico, se usa el genérico de "Error de autenticación"
                         if (document.getElementById('messageBox').style.display !== 'block') { // Solo si no hay un mensaje activo
                             document.getElementById('userIdDisplay').innerText = `ID de Usuario: No disponible (Inicialización/Autenticación fallida)`;
                         }
@@ -408,17 +513,14 @@
          * @param {string} company - El nombre de la empresa (SERO S.A.S. o Bestfinder).
          * @param {string} description - La descripción de la actividad.
          * @param {string} consultationDate - La fecha de consulta (YYYY-MM-DD).
-         * @param {string} responseDate - La fecha de respuesta (YYYY-MM-DD).
          * @param {string} person - La persona asociada a la consulta.
          */
-        const addActivity = async (company, description, consultationDate, responseDate, person) => {
+        const addActivity = async (company, description, consultationDate, person) => {
             // Verifica si Firebase y Firestore están listos antes de proceder
             if (!db || !isAuthReady || !isFirebaseInitialized) {
                 showMessageBox("La base de datos no está lista. Por favor, espere un momento e intente de nuevo.");
                 return;
             }
-
-            const daysBetween = calculateDaysBetween(consultationDate, responseDate);
 
             try {
                 const activitiesColRef = collection(db, `artifacts/${appId}/public/data/activities`);
@@ -426,8 +528,8 @@
                     company,
                     description,
                     consultationDate,
-                    responseDate,
-                    daysBetween,
+                    completionDate: null, // Inicialmente null
+                    daysBetween: null, // Inicialmente null
                     person,
                     isCompleted: false, // Por defecto, no completada
                     timestamp: new Date() // Marca de tiempo para ordenar
@@ -441,19 +543,62 @@
 
         /**
          * Alterna el estado de finalización de una actividad en Firestore.
+         * Se llama desde el renderizado de actividades.
          * @param {string} id - El ID del documento de la actividad.
-         * @param {boolean} currentStatus - El estado actual de finalización.
+         * @param {boolean} currentIsCompletedStatus - El estado actual de isCompleted de la actividad.
+         * @param {string} consultationDate - La fecha de consulta de la actividad.
          */
-        const toggleActivityCompletion = async (id, currentStatus) => {
+        window.toggleActivityCompletion = async (id, currentIsCompletedStatus, consultationDate) => {
+            if (currentIsCompletedStatus) {
+                // Si la actividad ya está completa y se desmarca
+                await updateActivityCompletionStatus(id, false, null);
+            } else {
+                // Si la actividad no está completa y se marca
+                showCompletionDateModal(id, consultationDate);
+            }
+        };
+
+        /**
+         * Actualiza el estado de finalización de una actividad en Firestore, incluyendo la fecha y días.
+         * @param {string} id - El ID del documento de la actividad.
+         * @param {boolean} newStatus - El nuevo estado de finalización (true/false).
+         * @param {string|null} completionDate - La fecha de finalización (YYYY-MM-DD) o null si se desmarca.
+         */
+        const updateActivityCompletionStatus = async (id, newStatus, completionDate) => {
             if (!db || !isAuthReady || !isFirebaseInitialized) {
                 showMessageBox("La base de datos no está lista.");
                 return;
             }
+
+            let daysDiff = null;
+            if (newStatus && completionDate) {
+                // Necesitamos obtener la fecha de consulta de la actividad
+                const docRef = doc(db, `artifacts/${appId}/public/data/activities`, id);
+                try {
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const activityData = docSnap.data();
+                        daysDiff = calculateDaysBetween(activityData.consultationDate, completionDate);
+                    } else {
+                        console.error("Documento de actividad no encontrado para ID:", id);
+                        showMessageBox("Error: Actividad no encontrada para calcular días.");
+                        return;
+                    }
+                } catch (error) {
+                    console.error("Error al obtener documento para calcular días:", error);
+                    showMessageBox(`Error al calcular días de finalización: ${error.message || error}. Por favor, recargue la página.`);
+                    return;
+                }
+            }
+
             try {
                 const activityDocRef = doc(db, `artifacts/${appId}/public/data/activities`, id);
                 await updateDoc(activityDocRef, {
-                    isCompleted: !currentStatus
+                    isCompleted: newStatus,
+                    completionDate: newStatus ? completionDate : null,
+                    daysBetween: newStatus ? daysDiff : null
                 });
+                showMessageBox(`Actividad ${newStatus ? 'marcada como completada' : 'marcada como pendiente'} con éxito.`);
             } catch (e) {
                 console.error("Error al actualizar documento: ", e);
                 showMessageBox("Error al actualizar la actividad.");
@@ -472,6 +617,7 @@
             try {
                 const activityDocRef = doc(db, `artifacts/${appId}/public/data/activities`, id);
                 await deleteDoc(activityDocRef);
+                showMessageBox("Actividad eliminada con éxito.");
             } catch (e) {
                 console.error("Error al eliminar documento: ", e);
                 showMessageBox("Error al eliminar la actividad.");
@@ -515,11 +661,17 @@
                 groupedActivities[company].forEach(activity => {
                     const listItem = document.createElement('li');
                     listItem.className = 'bg-gray-50 p-4 rounded-md shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between';
+                    
+                    // Display completionDate and daysBetween only if completed
+                    const completionInfo = activity.isCompleted && activity.completionDate !== null
+                        ? `<p class="text-sm text-gray-600">Finalización: ${activity.completionDate} | Días transcurridos: <span class="font-bold">${activity.daysBetween}</span></p>`
+                        : `<p class="text-sm text-gray-600">Estado: Pendiente</p>`;
+
                     listItem.innerHTML = `
                         <div class="flex-grow">
                             <p class="font-semibold text-lg">${activity.description}</p>
-                            <p class="text-sm text-gray-600">Consulta: ${activity.consultationDate} | Respuesta: ${activity.responseDate}</p>
-                            <p class="text-sm text-gray-600">Días entre: <span class="font-bold">${activity.daysBetween}</span></p>
+                            <p class="text-sm text-gray-600">Consulta: ${activity.consultationDate}</p>
+                            ${completionInfo}
                             <p class="text-sm text-gray-600">Persona: ${activity.person || 'N/A'}</p>
                             <div id="nextSteps-${activity.id}" class="mt-2 text-sm text-gray-700 italic"></div>
                         </div>
@@ -530,7 +682,7 @@
                             </button>
                             <input type="checkbox" id="completed-${activity.id}" ${activity.isCompleted ? 'checked' : ''}
                                 class="form-checkbox h-5 w-5 text-royal-blue-text rounded-md"
-                                onclick="window.toggleActivityCompletion('${activity.id}', ${activity.isCompleted})">
+                                onclick="window.toggleActivityCompletion('${activity.id}', ${activity.isCompleted}, '${activity.consultationDate}')">
                             <label for="completed-${activity.id}" class="text-sm text-gray-700">Completado</label>
                             <button onclick="window.deleteActivity('${activity.id}')"
                                 class="bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition duration-300 text-sm">
@@ -558,8 +710,9 @@
             document.getElementById('completedActivities').innerText = completed;
             document.getElementById('completionPercentage').innerText = `${percentage}%`;
 
-            const totalDays = activities.reduce((sum, activity) => sum + (activity.daysBetween || 0), 0);
-            const averageDays = total > 0 ? (totalDays / total).toFixed(1) : 0;
+            const completedActivitiesWithDays = activities.filter(activity => activity.isCompleted && activity.daysBetween !== null);
+            const totalDays = completedActivitiesWithDays.reduce((sum, activity) => sum + (activity.daysBetween || 0), 0);
+            const averageDays = completedActivitiesWithDays.length > 0 ? (totalDays / completedActivitiesWithDays.length).toFixed(1) : 0;
             document.getElementById('averageDaysResponse').innerText = averageDays;
         };
 
@@ -673,7 +826,7 @@
             const nextStepsDiv = document.getElementById(`nextSteps-${activityId}`);
             nextStepsDiv.innerHTML = '<span class="text-gray-500">Generando sugerencias...</span>'; // Mensaje de carga
 
-            const prompt = `Dada la siguiente descripción de una actividad jurídica, sugiere los próximos pasos o acciones relevantes para gestionar el caso. Responde de manera concisa y clara, enumerando los pasos si es posible. Descripción: ${description}`;
+            const prompt = `Dada la siguiente descripción de una actividad jurídica, sugiere los próximos pasos o acciones relevantes para gestionar el caso. Responde de manera concisa y clara, enumerando los pasos si es posible, BASÁNDOTE EN EL ORDENAMIENTO JURÍDICO LABORAL COLOMBIANO. Descripción: ${description}`;
             
             let chatHistory = [];
             chatHistory.push({ role: "user", parts: [{ text: prompt }] });
@@ -721,15 +874,14 @@
                 e.preventDefault();
                 const description = document.getElementById('seroDescription').value;
                 const consultationDate = document.getElementById('seroConsultationDate').value;
-                const responseDate = document.getElementById('seroResponseDate').value;
                 const person = document.getElementById('seroPerson').value;
 
-                if (!description || !consultationDate || !responseDate) {
+                if (!description || !consultationDate) {
                     showMessageBox("Por favor, rellene todos los campos para SERO S.A.S.");
                     return;
                 }
 
-                await addActivity('SERO S.A.S.', description, consultationDate, responseDate, person);
+                await addActivity('SERO S.A.S.', description, consultationDate, person);
                 e.target.reset(); // Limpia el formulario
             });
 
@@ -738,15 +890,14 @@
                 e.preventDefault();
                 const description = document.getElementById('bestfinderDescription').value;
                 const consultationDate = document.getElementById('bestfinderConsultationDate').value;
-                const responseDate = document.getElementById('bestfinderResponseDate').value;
                 const person = document.getElementById('bestfinderPerson').value;
 
-                if (!description || !consultationDate || !responseDate) {
+                if (!description || !consultationDate) {
                     showMessageBox("Por favor, rellene todos los campos para Bestfinder.");
                     return;
                 }
 
-                await addActivity('Bestfinder', description, consultationDate, responseDate, person);
+                await addActivity('Bestfinder', description, consultationDate, person);
                 e.target.reset(); // Limpia el formulario
             });
         });
